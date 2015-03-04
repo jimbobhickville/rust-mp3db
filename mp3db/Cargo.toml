@@ -1,0 +1,5 @@
+[package]
+
+name = "mp3db"
+version = "0.0.1"
+authors = ["Greg Hill <greg.hill@rackspace.com>"]
