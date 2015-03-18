@@ -1,78 +1,81 @@
-#![feature(path)]
 #![feature(io)]
-#![feature(fs)]
-#![feature(os)]
+#![feature(fs_walk)]
+#![feature(core)]
 
 use std::fs;
-use std::path::PathBuf;
+use std::path::Path;
 use std::fs::File;
 use std::io::Read;
+use std::io::Seek;
+use std::io::SeekFrom;
 use std::env;
+use std::str;
 
-fn synchsafe_to_int(synchsafe_vec: &Vec<u8>) -> usize {
+fn synchsafe_to_int(synchsafe_vec: &mut[u8; 4]) -> usize {
     let mut result: usize = 0;
     let length = synchsafe_vec.len();
-    // This is wrong
 
     for i in (0..length) {
         let offset = (length - 1 - i) * 7;
         let digit = synchsafe_vec[i] as usize;
-        println!("{}:{} (off: {}) = {}", i, digit, offset, digit << offset);
         result += digit << offset;
     }
 
     return result;
 }
 
-fn read_mp3(mp3_path: &PathBuf) {
+fn read_mp3(mp3_path: &Path) {
     let mut file = match File::open(&mp3_path) {
         Err(why) => panic!("couldn't open {}: {}", mp3_path.display(), why),
         Ok(file) => file,
     };
 
-    let mut contents = Vec::new();
-    match file.read_to_end(&mut contents) {
-        Err(why) => panic!("failed to read id3 tag from file: {}", why),
+    let id3tag_arr = &mut[0u8; 3];
+    match file.read(id3tag_arr) {
+        Err(why) => panic!("{}", why),
         _ => {},
     };
 
-    let mut id3tag = String::new();
-    let mut version = Vec::new();
-    let mut flags: u8 = 0;
-    let mut size_vec = Vec::new();
-    let mut size = 0;
-    let mut headers = String::new();
+    let id3tag_str = match str::from_utf8(id3tag_arr) {
+        Ok(e) => e,
+        Err(why) => panic!("{}", why),
+    };
 
-    // TODO: loop until we find the ID3 tag instead of assuming beginning
-    // TODO: figure out how to read in just a few bytes of the file
-    for byte in contents.into_iter() {
-        if id3tag.len() < 3 {
-            id3tag.push(byte as char);
-            continue;
-        }
-        if version.len() < 2 {
-            version.push(byte);
-            continue;
-        }
-        if flags == 0 {
-            flags = byte;
-            continue;
-        }
-        if size_vec.len() < 4 {
-            size_vec.push(byte);
-            continue;
-        }
-        if size == 0 {
-            size = synchsafe_to_int(&size_vec)
-        }
-        if headers.len() < size {
-            headers.push(byte as char)
-        }
+    let version_arr = &mut[0u8; 2];
+    match file.read(version_arr) {
+        Err(why) => panic!("{}", why),
+        _ => {},
+    };
+
+    let flags_arr = &mut[0u8; 1];
+    match file.read(flags_arr) {
+        Err(why) => panic!("{}", why),
+        _ => {},
+    };
+
+    let synchsafe_arr = &mut[0u8; 4];
+    match file.read(synchsafe_arr) {
+        Err(why) => panic!("{}", why),
+        _ => {},
+    };
+
+    let size = synchsafe_to_int(synchsafe_arr);
+
+    let remaining_iter = file.take(size as u64).bytes();
+    let mut remaining_vec = Vec::new();
+    for remaining_char in remaining_iter {
+        match remaining_char {
+            Err(why) => panic!("{}", why),
+            Ok(c) => remaining_vec.push(c),
+        };
     }
 
-    println!("Version 2.{}.{} tag", version[0], version[1]);
-    println!("Size vec {:?}", size_vec);
+    println!("path = {}", mp3_path.display());
+    println!("id3tag = {:?}", id3tag_str);
+    println!("Version 2.{}.{} tag", version_arr[0], version_arr[1]);
+    println!("Size vec {:?}", synchsafe_arr);
     println!("Remaining headers size {}", size);
+    println!("Remaining headers {:?}", remaining_vec)
 }
 
 fn main() {
