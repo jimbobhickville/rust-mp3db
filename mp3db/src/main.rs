@@ -52,6 +52,11 @@ fn read_mp3(mp3_path: &Path) {
         Err(why) => panic!("{}", why),
         _ => {},
     };
+    let flags = flags_arr[0];
+
+    let unsync = (flags & (1 << 7)) == 1;
+    let has_extended_header = (flags & (1 << 6)) == 1;
+    let has_footer = (flags & (1 << 4)) == 1;
 
     let synchsafe_arr = &mut[0u8; 4];
     match file.read(synchsafe_arr) {
@@ -59,10 +64,13 @@ fn read_mp3(mp3_path: &Path) {
         _ => {},
     };
 
-    let size = synchsafe_to_int(synchsafe_arr);
+    let mut size = synchsafe_to_int(synchsafe_arr);
+    if has_footer {
+        size += 10;
+    }
 
-    let remaining_iter = file.take(size as u64).bytes();
     let mut remaining_vec = Vec::new();
+    let remaining_iter = file.take(size as u64).bytes();
     for remaining_char in remaining_iter {
         match remaining_char {
             Err(why) => panic!("{}", why),
@@ -71,11 +79,17 @@ fn read_mp3(mp3_path: &Path) {
     }
 
     println!("path = {}", mp3_path.display());
+    println!("flags = {}", flags);
+    println!("unsync = {}", unsync);
+    println!("has_extended_header = {}", has_extended_header);
+    println!("has_footer = {}", has_footer);
     println!("id3tag = {:?}", id3tag_str);
     println!("Version 2.{}.{} tag", version_arr[0], version_arr[1]);
     println!("Size vec {:?}", synchsafe_arr);
     println!("Remaining headers size {}", size);
-    println!("Remaining headers {:?}", remaining_vec)
+    if size < 200 {
+        println!("Remaining headers {:?}", remaining_vec);
+    }
 }
 
 fn main() {
@@ -99,7 +113,7 @@ fn main() {
             };
             if ext == "mp3" {
                 read_mp3(&path);
-                break;
+                // break;
             }
         },
     }
